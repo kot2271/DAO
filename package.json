@@ -1,5 +1,5 @@
 {
-  "name": "westing_and_staking",
+  "name": "DAO",
   "version": "1.0.0",
   "description": "",
   "scripts": {
@@ -46,7 +46,8 @@
     "evm-bn": "^1.1.2",
     "fs": "^0.0.1-security",
     "hardhat-shorthand": "^1.0.0",
-    "hardhat-tracer": "^2.7.0"
+    "hardhat-tracer": "^2.7.0",
+    "web3-eth-abi": "^4.1.4"
   },
   "mocha": {
     "timeout": 10000000

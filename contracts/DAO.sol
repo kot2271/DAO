@@ -5,6 +5,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract DAO is AccessControl {
+    /**
+     * @notice This role has the privilege to add proposals
+     * and change minimal quorum and debating period.
+     */
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     enum VotingStatus {
@@ -14,7 +18,9 @@ contract DAO is AccessControl {
         REJECTED
     }
 
-    // Proposal struct with details
+    /**
+     * @notice This struct stores information about a proposal
+     */
     struct Proposal {
         string description;
         bytes callData;
@@ -25,41 +31,92 @@ contract DAO is AccessControl {
         VotingStatus status;
     }
 
-    // DAO token
+    /**
+     * @notice The ERC20 token used for voting.
+     */
     IERC20 public daoToken;
 
-    // Mapping to store proposals
+    /**
+     * @notice Maps proposal IDs to their corresponding Proposal structs.
+     */
     mapping(uint256 => Proposal) public proposals;
 
-    // Number of created proposals
+    /**
+     * @notice Number of created proposals.
+     */
     uint256 public proposalsCount;
 
-    // User's frozen tokens mapping
+    /**
+     * @notice Maps user addresses to their deposited token amount.
+     */
     mapping(address => uint256) public frozenTokens;
 
-    // Mapping user votes by voting
+    /**
+     * @notice Maps user addresses to the timestamp until which their voting rights
+     * are locked due to open proposals.
+     */
+    mapping(address => uint256) public lockedTill;
+
+    /**
+     * @notice Maps user addresses to a mapping of proposal IDs
+     * to voting booleans (true for support, false for against).
+     */
     mapping(address => mapping(uint256 => bool)) public userVotes;
 
-    // Minimum quorum for proposal acceptance
+    /**
+     * @notice The minimum number of tokens required for a proposal
+     * to be considered accepted.
+     */
     uint256 public minimalQuorum;
 
-    // Voting duration in seconds
+    /**
+     * @notice The duration of voting for proposals in seconds.
+     */
     uint256 public debatingPeriod;
 
-    // Mapping of active votes of users
-    mapping(address => uint256) public activeProposals;
-
+    // Events
+    /**
+     * @notice Emitted when a new proposal is added.
+     */
     event ProposalAdded(
         uint256 indexed id,
         string description,
         address recipient
     );
+
+    /**
+     * @notice Emitted when a user deposits tokens to participate in voting.
+     */
     event DepositMade(address indexed user, uint256 amount);
+
+    /**
+     * @notice Emitted when a user withdraws their deposited tokens.
+     */
     event WithdrawalMade(address indexed user, uint256 amount);
+
+    /**
+     * @notice Emitted when a user votes on a proposal.
+     */
     event Voted(address indexed user, uint256 id, bool support);
+
+    /**
+     * @notice Emitted when a voting period ends and a proposal is either accepted.
+     */
     event ProposalFinished(uint256 indexed id);
+
+    /**
+     * @notice Emitted when the minimal quorum for proposal acceptance is changed.
+     */
     event QuorumChanged(uint256 newQuorum);
+
+    /**
+     * @notice Emitted when the voting duration for proposals is changed.
+     */
     event DebatingPeriodChanged(uint256 newPeriod);
+
+    /**
+     * @notice Emitted when a proposal is rejected after voting finishes.
+     */
     event ProposalRejected(
         uint256 indexed id,
         uint256 votesFor,
@@ -67,19 +124,86 @@ contract DAO is AccessControl {
         uint256 minQuorum
     );
 
+    // Custom errors
+    /**
+     * @notice Reverted when an address is invalid (e.g., address(0)).
+     */
     error InvalidAddress();
+
+    /**
+     * @notice Reverted when the deposit amount is zero.
+     */
     error DepositAmountMustBePositive();
+
+    /**
+     * @notice Reverted when trying to interact with proposals
+     * before any are added.
+     */
     error ProposalNotAddedYet();
+
+    /**
+     * @notice Reverted when a user attempts to withdraw tokens t
+     * hey don't have deposited.
+     */
     error NoTokensToWithdraw();
-    error CannotWithdrawWhileVoting();
+
+    /**
+     * @notice Reverted when a user attempts to withdraw tokens
+     * while their voting rights are locked.
+     */
+    error CannotWithdrawWhileLocked();
+
+    /**
+     * @notice Reverted when tokens transfer fails
+     * due to insufficient balance or other issues.
+     */
     error TokenTransferFailed();
+
+    /**
+     * @notice Reverted when trying to vote on a proposal
+     * after the voting period has ended.
+     */
     error VotingClosed();
+
+    /**
+     * @notice Reverted when trying to execute a proposal
+     * that has already been executed.
+     */
     error ProposalAlreadyExecuted();
+
+    /**
+     * @notice Reverted when a user attempts to vote
+     * without having deposited tokens.
+     */
     error NoVotingRightsWithoutFrozenTokens();
+
+    /**
+     * @notice Reverted when a user tries to vote
+     * on a proposal twice.
+     */
     error UserAlreadyVoted();
+
+    /**
+     * @notice Reverted when execution of a proposal's callData fails.
+     */
     error ProposalExecutionFailed();
+
+    /**
+     * @notice Reverted when trying to finalize a proposal
+     * before the voting period ends.
+     */
     error VotingNotFinished();
+
+    /**
+     * @notice Reverted when setting the minimal quorum
+     * to a non-positive value.
+     */
     error MinimalQuorumMustBePositive();
+
+    /**
+     * @notice Reverted when setting the debating period
+     * to a non-positive value.
+     */
     error DebatingPeriodMustBePositive();
 
     constructor(
@@ -93,7 +217,10 @@ contract DAO is AccessControl {
         debatingPeriod = _debatingPeriod;
     }
 
-    // Function to add a proposal
+    /**
+     * @notice Adds a new proposal with the specified details.
+     * Only accessible to ADMIN_ROLE.
+     */
     function addProposal(
         address payable recipient,
         string memory description,
@@ -112,7 +239,9 @@ contract DAO is AccessControl {
         proposalsCount++;
     }
 
-    // Function to deposit tokens
+    /**
+     * @notice Allows users to deposit tokens to participate in voting.
+     */
     function deposit(uint256 amount) external {
         if (msg.sender == address(0)) revert InvalidAddress();
         if (amount <= 0) revert DepositAmountMustBePositive();
@@ -134,12 +263,16 @@ contract DAO is AccessControl {
         emit DepositMade(msg.sender, amount);
     }
 
-    // Function to withdraw tokens
+    /**
+     * @notice Allows users to withdraw their deposited tokens.
+     */
     function withdraw() external {
         if (msg.sender == address(0)) revert InvalidAddress();
         if (frozenTokens[msg.sender] <= 0) revert NoTokensToWithdraw();
-        if (activeProposals[msg.sender] != 0)
-            revert CannotWithdrawWhileVoting();
+
+        // Check if user is locked
+        if (lockedTill[msg.sender] > block.timestamp)
+            revert CannotWithdrawWhileLocked();
 
         uint256 amount = frozenTokens[msg.sender];
 
@@ -158,20 +291,23 @@ contract DAO is AccessControl {
         emit WithdrawalMade(msg.sender, amount);
     }
 
-    // Function to vote on a proposal
+    /**
+     * @notice Allows users to vote on a proposal.
+     */
     function vote(uint256 id, bool support) external {
         if (block.timestamp >= proposals[id].votingDeadline)
             revert VotingClosed();
-        if (
-            proposals[id].status == VotingStatus.FINISHED ||
-            proposals[id].status == VotingStatus.REJECTED
-        ) revert ProposalAlreadyExecuted();
         if (frozenTokens[msg.sender] <= 0)
             revert NoVotingRightsWithoutFrozenTokens();
         if (userVotes[msg.sender][id]) revert UserAlreadyVoted();
 
         userVotes[msg.sender][id] = true;
-        activeProposals[msg.sender]++;
+
+        // Update lockedTill
+        lockedTill[msg.sender] = Math.max(
+            lockedTill[msg.sender],
+            proposals[id].votingDeadline
+        );
 
         if (support) {
             proposals[id].votesFor += frozenTokens[msg.sender];
@@ -181,14 +317,13 @@ contract DAO is AccessControl {
         emit Voted(msg.sender, id, support);
     }
 
-    // Function to finalize a proposal
+    /**
+     * @notice Finalizes a proposal by checking quorum and executing its callData
+     * if it's accepted.
+     */
     function finishProposal(uint256 id) external {
         if (block.timestamp < proposals[id].votingDeadline)
             revert VotingNotFinished();
-        if (
-            proposals[id].status == VotingStatus.FINISHED ||
-            proposals[id].status == VotingStatus.REJECTED
-        ) revert ProposalAlreadyExecuted();
 
         bool quorumReached = proposals[id].votesFor +
             proposals[id].votesAgainst >=
@@ -203,7 +338,9 @@ contract DAO is AccessControl {
             if (!success) revert ProposalExecutionFailed();
             proposals[id].status = VotingStatus.FINISHED;
             userVotes[msg.sender][id] = false;
-            activeProposals[msg.sender]--;
+
+            // Update user's locked state
+            lockedTill[msg.sender] = block.timestamp;
 
             emit ProposalFinished(id);
         } else {
@@ -215,18 +352,25 @@ contract DAO is AccessControl {
                 minimalQuorum
             );
             userVotes[msg.sender][id] = false;
-            activeProposals[msg.sender]--;
+
+            // Update user's locked state
+            lockedTill[msg.sender] = block.timestamp;
         }
     }
 
-    // Function to change minimal quorum
+    /**
+     * @notice Allows ADMIN_ROLE to change the minimum quorum
+     * required for proposal acceptance.
+     */
     function setMinimalQuorum(uint256 newQuorum) external onlyRole(ADMIN_ROLE) {
         if (newQuorum <= 0) revert MinimalQuorumMustBePositive();
         minimalQuorum = newQuorum;
         emit QuorumChanged(newQuorum);
     }
 
-    // Function to change voting duration
+    /**
+     * @notice Allows ADMIN_ROLE to change the voting duration for proposals.
+     */
     function setDebatingPeriod(
         uint256 newPeriod
     ) external onlyRole(ADMIN_ROLE) {
