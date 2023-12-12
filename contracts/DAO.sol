@@ -337,10 +337,6 @@ contract DAO is AccessControl {
             );
             if (!success) revert ProposalExecutionFailed();
             proposals[id].status = VotingStatus.FINISHED;
-            userVotes[msg.sender][id] = false;
-
-            // Update user's locked state
-            lockedTill[msg.sender] = block.timestamp;
 
             emit ProposalFinished(id);
         } else {
@@ -351,10 +347,6 @@ contract DAO is AccessControl {
                 proposals[id].votesAgainst,
                 minimalQuorum
             );
-            userVotes[msg.sender][id] = false;
-
-            // Update user's locked state
-            lockedTill[msg.sender] = block.timestamp;
         }
     }
 
